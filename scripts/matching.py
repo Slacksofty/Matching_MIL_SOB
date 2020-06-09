@@ -30,7 +30,7 @@ password = 'TFIDF_Test'
 def setup_DataFrame(sql_query, columns_names, conn):
 	df_query = pd.read_sql_query(sql_query, conn)
 	df = pd.DataFrame(df_query, columns=columns_names)
-	df[df.columns[1]] = [" ".join(re.sub('[^A-Za-z0-9 ]+', '', ((unidecode.unidecode(s).replace('(r)', 'rouge')).replace('(b)', 'blanc'))).split()).upper() for s in df[df.columns[1]]]
+	df[df.columns[1]] = [" ".join(re.sub('[^A-Za-z0-9 ]+', '', ((unidecode.unidecode(s).replace('(r)', 'rouge ')).replace('(b)', 'blanc '))).split()).upper() for s in df[df.columns[1]]]
 	df[df.columns[2]] = [" ".join(re.sub('[^A-Za-z0-9 ]+', '', unidecode.unidecode(s)).split()).upper() for s in df[df.columns[2]]]
 	return df
 
