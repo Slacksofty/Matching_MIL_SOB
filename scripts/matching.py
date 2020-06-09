@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import time, re, math, sys, getopt
 from scipy import sparse
+from pathlib2 import Path
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
@@ -107,7 +108,7 @@ def main(argv):
 	long_options = ['help', 'verbose', 'output=', 'apl=', 'lbl=']
 
 	try:
-		args, values = getopt.getopt(argv, short_options, long_options)
+		args, _values = getopt.getopt(argv, short_options, long_options)
 	except getopt.error as err:
 		print(str(err) + '\nUtilisez -h ou --help pour afficher l\'aide')
 		sys.exit(2)
@@ -138,7 +139,7 @@ def main(argv):
 	tfidf_matrix_2 = matching(corpus_sob, corpus_mil).transpose()
 
 	matches = extraction(tfidf_matrix_1, mil, sob, create_df_lbl, threshold_lbl, verbose, m2 = tfidf_matrix_2)
-	matches.to_csv(f'../res/{output}.csv', index=False)
+	matches.to_csv(Path(f'../res/{output}.csv'), index=False)
 
 main(sys.argv[1:])
 
