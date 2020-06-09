@@ -1,20 +1,37 @@
 import pandas as pd
 import numpy as np
-import time, re, math, sys, getopt
+import time, re, math, sys, getopt, pyodbc, unidecode
 from scipy import sparse
 from pathlib2 import Path
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
-#Mesure du temps d'execution
-t_start = time.time()
+#Variables globales
+mil_query = '''SELECT CD_PRODUIT AS CODE_MIL, LB_PRODUIT AS LABEL_MIL, LIBELLE_APPELLATION AS APPELLATION_MIL 
+                                FROM MILLESIMA_PRODUITS
+                                INNER JOIN MILLESIMA_APPELLATIONS_NEW
+                                ON MILLESIMA_PRODUITS.CD_APPELLATION_NEW = MILLESIMA_APPELLATIONS_NEW.ID_APPELLATION'''
 
-#Setup
-mil = pd.read_csv('../src/MIL.csv', na_filter=False)
-sob = pd.read_csv('../src/SOB.csv', na_filter=False)
+sob_query = '''SELECT CD_SOUS_GROUPE AS CODE_SOB, LB_SOUS_GROUPE , SOBOVI_APPELLATIONS.LB_GROUPE AS APPELLATION_SOB, SOBOVI_PRODUITS.CD_COULEUR, CONCAT(LB_SOUS_GROUPE, ' ', SOBOVI_PRODUITS.CD_COULEUR) AS LABEL_SOB
+                                FROM SOBOVI_PRODUITS
+                                INNER JOIN SOBOVI_APPELLATIONS
+                                ON SOBOVI_PRODUITS.CD_GROUPE = SOBOVI_APPELLATIONS.CD_GROUPE'''
 
-corpus_mil = [" ".join(re.sub('[^A-Za-z0-9 ]+', '', lb).split()).upper() for lb in mil[mil.columns[1]]]
-corpus_sob = [" ".join(re.sub('[^A-Za-z0-9 ]+', '', lb).split()).upper() for lb in sob[sob.columns[1]]]
+mil_columns_names = ['CODE_MIL', 'LABEL_MIL', 'APPELLATION_MIL']
+sob_columns_names = ['CODE_SOB', 'LABEL_SOB', 'APPELLATION_SOB']
+
+server_name = 'srv-v-bdd01'
+DB_name = 'TF-IDF'
+user_name = 'Test_TFIDF'
+password = 'TFIDF_Test'
+
+# Pull une DataFrame depuis la BD
+def setup_DataFrame(sql_query, columns_names, conn):
+	df_query = pd.read_sql_query(sql_query, conn)
+	df = pd.DataFrame(df_query, columns=columns_names)
+	df[df.columns[1]] = [" ".join(re.sub('[^A-Za-z0-9 ]+', '', ((unidecode.unidecode(s).replace('(r)', 'rouge')).replace('(b)', 'blanc'))).split()).upper() for s in df[df.columns[1]]]
+	df[df.columns[2]] = [" ".join(re.sub('[^A-Za-z0-9 ]+', '', unidecode.unidecode(s)).split()).upper() for s in df[df.columns[2]]]
+	return df
 
 # Fonction de decoupage des mots avec n la longueur des mots en nombre de characteres
 def ngrams(string, n=3):
@@ -80,7 +97,7 @@ def extraction(m1, df_a, df_b, create_df_func, threshold, verbose, m2=None):
 	if(verbose): print(df)
 	return df
 
-# Extrait une liste d'appelation a partir d'une DataFrame
+# Extrait une liste d'appelations a partir d'une DataFrame
 def apl_setup(df):
 	return list(dict.fromkeys([" ".join(re.sub('[^A-Za-z0-9 ]+', '', lb).split()).upper() for lb in df[df.columns[2]]]))
 	
@@ -99,6 +116,11 @@ def apl_indexing(df, i, matches_apl):
 	
 
 def main(argv):
+
+	#Debut de mesure du temps d'execution
+	t_start = time.time()
+
+	#Variables par default 
 	threshold_apl = 0.6
 	threshold_lbl = 0.6
 	output = 'output'
@@ -125,6 +147,17 @@ def main(argv):
 		elif arg in ('-l', '--lbl'):
 			threshold_lbl = float(val)
     	
+	#Connection a la BD
+	conn = pyodbc.connect('Driver={SQL Server};'
+                      f'Server={server_name};'
+                      f'Database={DB_name};'
+                      'Trusted_Connection=no;'
+                      f'UID={user_name};'
+                      f'PWD={password};')
+
+	mil = setup_DataFrame(mil_query, mil_columns_names, conn)
+	sob = setup_DataFrame(sob_query, sob_columns_names, conn)
+
 	apl_mil = apl_setup(mil)
 	apl_sob = apl_setup(sob)
 
@@ -135,14 +168,14 @@ def main(argv):
 	apl_indexing(mil, 0, matches_apl)
 	apl_indexing(sob, 1, matches_apl)
 
-	tfidf_matrix_1 = matching(corpus_mil, corpus_sob)
-	tfidf_matrix_2 = matching(corpus_sob, corpus_mil).transpose()
+	tfidf_matrix_1 = matching(mil[mil.columns[1]], sob[sob.columns[1]])
+	tfidf_matrix_2 = matching(sob[sob.columns[1]], mil[mil.columns[1]]).transpose()
 
 	matches = extraction(tfidf_matrix_1, mil, sob, create_df_lbl, threshold_lbl, verbose, m2 = tfidf_matrix_2)
 	matches.to_csv(Path(f'../res/{output}.csv'), index=False)
 
-main(sys.argv[1:])
+	#affichage du temps d'execution
+	t_end = time.time() - t_start
+	print(t_end)
 
-#Selftiming ends
-t_end = time.time() - t_start
-print(t_end)
+main(sys.argv[1:])
