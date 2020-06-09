@@ -1,10 +1,11 @@
 import pandas as pd
 import numpy as np
-import time, re, math, sys, getopt, pyodbc, unidecode
+import time, re, math, sys, getopt, pyodbc, unidecode, urllib
 from scipy import sparse
 from pathlib2 import Path
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+from sqlalchemy import create_engine
 
 #Variables globales
 mil_query = '''SELECT CD_PRODUIT AS CODE_MIL, LB_PRODUIT AS LABEL_MIL, LIBELLE_APPELLATION AS APPELLATION_MIL 
@@ -120,12 +121,13 @@ def main(argv):
 	#Debut de mesure du temps d'execution
 	t_start = time.time()
 
-	#Variables par default 
+	#Options par default 
 	threshold_apl = 0.6
 	threshold_lbl = 0.6
 	output = 'output'
 	verbose = False
 
+	#Traitement des options
 	short_options = 'hvo:a:l:'
 	long_options = ['help', 'verbose', 'output=', 'apl=', 'lbl=']
 
@@ -148,15 +150,11 @@ def main(argv):
 			threshold_lbl = float(val)
     	
 	#Connection a la BD
-	conn = pyodbc.connect('Driver={SQL Server};'
-                      f'Server={server_name};'
-                      f'Database={DB_name};'
-                      'Trusted_Connection=no;'
-                      f'UID={user_name};'
-                      f'PWD={password};')
+	params = urllib.parse.quote_plus('Driver={SQL Server};' + f'Server={server_name}; Database={DB_name}; Trusted_Connection=no; UID={user_name}; PWD={password};')
+	engine = create_engine(f'mssql+pyodbc:///?odbc_connect={params}')
 
-	mil = setup_DataFrame(mil_query, mil_columns_names, conn)
-	sob = setup_DataFrame(sob_query, sob_columns_names, conn)
+	mil = setup_DataFrame(mil_query, mil_columns_names, engine)
+	sob = setup_DataFrame(sob_query, sob_columns_names, engine)
 
 	apl_mil = apl_setup(mil)
 	apl_sob = apl_setup(sob)
@@ -173,6 +171,7 @@ def main(argv):
 
 	matches = extraction(tfidf_matrix_1, mil, sob, create_df_lbl, threshold_lbl, verbose, m2 = tfidf_matrix_2)
 	matches.to_csv(Path(f'../res/{output}.csv'), index=False)
+	matches.to_sql('MATCHING_RESULTS', con=engine, if_exists='replace', index=False)
 
 	#affichage du temps d'execution
 	t_end = time.time() - t_start
